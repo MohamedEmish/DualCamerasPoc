@@ -64,6 +64,5 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.4.1"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.4.1"
 
-    implementation 'com.arthenica:mobile-ffmpeg-full:4.4'
-    implementation 'com.infullmobile.android:videokit-release:1.0.1'
+    implementation 'com.arthenica:ffmpeg-kit-full:4.5.1'
 }

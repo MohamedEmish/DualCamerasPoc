@@ -32,18 +32,16 @@ import androidx.lifecycle.lifecycleScope
 import com.amosh.dualcameraspoc.FileUtilsKt.getPath
 import com.amosh.dualcameraspoc.FileUtilsKt.writeFileOnInternalStorage
 import com.amosh.dualcameraspoc.databinding.FragmentCameraBinding
-import com.arthenica.mobileffmpeg.Config.RETURN_CODE_CANCEL
-import com.arthenica.mobileffmpeg.Config.RETURN_CODE_SUCCESS
-import com.arthenica.mobileffmpeg.FFmpeg
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegKitConfig
+import com.arthenica.ffmpegkit.ReturnCode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.BufferedWriter
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStreamWriter
-import java.io.Writer
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.resume
@@ -348,84 +346,62 @@ class CameraFragment : Fragment() {
                     // Launch external activity via intent to play video recorded using our provider
                     val rearUri = FileUtilsKt.getFileUri(rearOutputFile, requireContext())
                     val frontUri = FileUtilsKt.getFileUri(frontOutputFile, requireContext())
-                    val rearPath = getPath(requireContext(), rearUri ?: Uri.EMPTY)
-                    val frontPath = getPath(requireContext(), frontUri ?: Uri.EMPTY)
+                    val rearPath = FFmpegKitConfig.getSafParameterForRead(requireContext(), rearUri ?: Uri.EMPTY)
+                    val frontPath = FFmpegKitConfig.getSafParameterForRead(requireContext(), frontUri ?: Uri.EMPTY)
 
                     val combinedFile = writeFileOnInternalStorage(requireContext())
                     val combinedFileUri = FileUtilsKt.getFileUri(combinedFile, requireContext()) ?: Uri.EMPTY
-                    val combinedPath = getPath(requireContext(), combinedFileUri)
-                    Log.i("Uris", "rear uri= $rearUri\n path =$rearPath")
-                    Log.i("Uris", "front uri= $frontUri\n path =$frontPath")
+                    val combinedPath = FFmpegKitConfig.getSafParameterForWrite(requireContext(), combinedFileUri)
+
+                    Log.i("Uris", "rear uri= $rearUri\n path =${getPath(requireContext(), rearUri ?: Uri.EMPTY)}")
+                    Log.i("Uris", "rear uri= $rearUri\n safe path =$rearPath")
+
+                    Log.i("Uris", "front uri= $frontUri\n path =${getPath(requireContext(), frontUri ?: Uri.EMPTY)}")
+                    Log.i("Uris", "front uri= $frontUri\n safe path =$frontPath")
 
                     Log.d("FFmpeg", "combined exists ${combinedFile?.isFile ?: false && combinedFile?.exists() ?: false}")
-//                    val command = arrayOf(
-//                        "-i",
-//                        rearPath,
-//                        "-f",
-//                        "lavfi",
-//                        "-i",
-//                        "movie=" + frontPath +
-//                            ":loop=1000,setpts=N/FRAME_RATE/TB",
-//                        "-y",
-//                        "-filter_complex",
-//                        "[1:v][0:v]scale2ref[ua][b];[ua]setsar=1,format=yuva444p,colorchannelmixer=aa=1[u];[b][u]overlay=1:1:shortest=1",
-//                        combinedPath
-//                    )
-//
-//                    FFmpeg.executeAsync(command) { _, returnCode ->
-//                        Log.d("FFmpeg", "returnCode = $returnCode")
-//                        Log.d("FFmpeg", "result file uri $combinedFileUri")
-//                        Log.d("FFmpeg", "result file path $combinedPath")
-//                        when (returnCode) {
-//                            RETURN_CODE_SUCCESS -> {
-//                                Log.d("FFmpeg", "RETURN_CODE_SUCCESS")
-//                                Log.d("FFmpeg", "combined exists ${combinedFile?.isFile ?: false && combinedFile?.exists() ?: false}")
-//                                Toast.makeText(requireContext(), "SUCCESS", Toast.LENGTH_LONG).show()
-//                            }
-//                            RETURN_CODE_CANCEL -> Log.d("FFmpeg", "RETURN_CODE_CANCEL")
-//                            else -> Log.d("FFmpeg", "else")
-//                        }
-//                    }
+                    val command = arrayOf(
+                        "-y",
+                        "-i",
+                        "" + rearPath,
+                        "-i",
+                        "" + frontPath,
+                        "-filter_complex",
+                        "[1]scale=iw*1.5:ih*1.5[s1];[0][s1]overlay=100:H-320:shortest=1",
+                        combinedPath
+                    )
+                    FFmpegKit.executeAsync(command.joinToString(separator = " "), { session ->
+                        val state = session!!.state
+                        val returnCode = session.returnCode
 
-                    concatenate(rearPath ?: "", frontPath ?: "", combinedPath ?: "")
+                        // CALLED WHEN SESSION IS EXECUTED
+                        Log.d(TAG,
+                            java.lang.String.format("FFmpeg process exited with state %s and rc %s.%s",
+                                state,
+                                returnCode,
+                                session.failStackTrace))
+
+                        when (returnCode.value) {
+                            ReturnCode.SUCCESS -> {
+                                Log.d("FFmpeg", "RETURN_CODE_SUCCESS")
+                                Log.d("FFmpeg", "combined exists ${combinedFile?.isFile ?: false && combinedFile?.exists() ?: false}")
+                                GlobalScope.launch {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(this@CameraFragment.requireContext(), "SUCCESS", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            ReturnCode.CANCEL -> Log.d("FFmpeg", "RETURN_CODE_CANCEL")
+                            else -> Log.d("FFmpeg", "else with code ${returnCode.value}")
+                        }
+                    }, { log -> Log.w("FFmpeg", "${log?.message}") }
+                    ) { statistics -> Log.i("FFmpeg", "${statistics?.size}") }
+
                     // Finishes our current camera screen
                     delay(MainActivity.ANIMATION_SLOW_MILLIS)
                 }
             }
         }
-    }
-
-    fun concatenate(inputFile1: String, inputFile2: String, outputFile: String) {
-        Log.d(TAG, "Concatenating $inputFile1 and $inputFile2 to $outputFile")
-        val list: String = generateList(listOf(inputFile1, inputFile2))
-        val vk: Videokit = Videokit.getInstance()
-        vk.run(arrayOf(
-            "ffmpeg",
-            "-f",
-            "concat",
-            "-i",
-            list,
-            "-c",
-            "copy",
-            outputFile
-        ))
-    }
-
-    private fun generateList(inputs: List<String>): String {
-        val list: File?
-        val writer: Writer?
-        try {
-            list = File.createTempFile("ffmpeg-list", ".txt")
-            writer = BufferedWriter(OutputStreamWriter(FileOutputStream(list)))
-            for (input in inputs) {
-                writer.write("file '$input'\n")
-                Log.d(TAG, "Writing to list file: file '$input'")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return "/"
-        }
-        return writer.toString()
     }
 
     /** Creates a [MediaRecorder] instance using the provided [Surface] as input */
