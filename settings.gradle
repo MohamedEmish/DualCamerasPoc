@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        jcenter()
+        maven { url 'https://maven.infullmobile.com/public' }
+        google()
+        mavenCentral()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        jcenter()
+        maven { url 'https://maven.infullmobile.com/public' }
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "DualCamerasPoc"
+include ':app'
