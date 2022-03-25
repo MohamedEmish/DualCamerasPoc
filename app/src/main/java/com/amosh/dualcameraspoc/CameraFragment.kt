@@ -306,7 +306,7 @@ class CameraFragment : Fragment() {
 
                     frontRecorder.apply {
                         // Sets output orientation based on current sensor value at start time
-                        relativeOrientation.value?.let { setOrientationHint(it) }
+                        relativeOrientation.value?.let { setOrientationHint(it + 180) }
                         prepare()
                         start()
                     }
@@ -367,7 +367,7 @@ class CameraFragment : Fragment() {
                         "-i",
                         "" + frontPath,
                         "-filter_complex",
-                        "[1]scale=iw*1.5:ih*1.5[s1];[0][s1]overlay=100:H-320:shortest=1",
+                        "[1][0]scale2ref=w=oh*mdar:h=ih*0.37[logo][video];[video][logo]overlay=6:H-h-6:shortest=1",
                         combinedPath
                     )
                     FFmpegKit.executeAsync(command.joinToString(separator = " "), { session ->
@@ -391,8 +391,22 @@ class CameraFragment : Fragment() {
                                     }
                                 }
                             }
-                            ReturnCode.CANCEL -> Log.d("FFmpeg", "RETURN_CODE_CANCEL")
-                            else -> Log.d("FFmpeg", "else with code ${returnCode.value}")
+                            ReturnCode.CANCEL -> {
+                                Log.d("FFmpeg", "RETURN_CODE_CANCEL")
+                                GlobalScope.launch {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(this@CameraFragment.requireContext(), "CANCEL", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            else -> {
+                                Log.d("FFmpeg", "else with code ${returnCode.value}")
+                                GlobalScope.launch {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(this@CameraFragment.requireContext(), "else with code", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
                         }
                     }, { log -> Log.w("FFmpeg", "${log?.message}") }
                     ) { statistics -> Log.i("FFmpeg", "${statistics?.size}") }
@@ -412,7 +426,6 @@ class CameraFragment : Fragment() {
         setOutputFile(rearOutputFile.absolutePath)
         setVideoEncodingBitRate(RECORDER_VIDEO_BITRATE)
         setVideoFrameRate(30)
-//        setVideoSize(704, 576)
         setVideoEncoder(MediaRecorder.VideoEncoder.H264)
         setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
         setInputSurface(surface)
@@ -425,7 +438,6 @@ class CameraFragment : Fragment() {
         setOutputFile(frontOutputFile.absolutePath)
         setVideoEncodingBitRate(RECORDER_VIDEO_BITRATE)
         setVideoFrameRate(30)
-//        setVideoSize(128, 96)
         setVideoEncoder(MediaRecorder.VideoEncoder.H264)
         setInputSurface(surface)
     }
